@@ -7,7 +7,7 @@ Quick and easy way to build an NFT (powered by ApeWorX).
 NOTE: Make sure to have the template plugin installed first.
 
 ```sh
-$ ape template gh:ApeAcademy/ERC721
+$ ape template gh:ApeAcademy/ERC1155
 $ cd <project-name>
 $ ape plugins install -U .
 $ ape test

@@ -1,0 +1,16 @@
+{
+  "cookiecutter": {
+    "project_name": "Basic",
+    "token_name": "MyToken",
+    "token_symbol": "TEST",
+    "updatable_uri": "y",
+    "base_uri": "ipfs://QmaZm1rAkt6kHTKTFX8GwEhtPMVMeAGJYMBvoAcJWTddwb",
+    "metadata": "y",
+    "mintable": "y",
+    "max_supply": "y",
+    "max_supply_amount": 3,
+    "permitable": "y",
+    "royalties": "y",
+    "royalty_percentage_in_decimals": 10.0
+  }
+}
