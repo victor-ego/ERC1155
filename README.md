@@ -1,4 +1,4 @@
-# Ape Academy ERC721 template
+# Ape Academy ERC1155 template
 
 Quick and easy way to build an NFT (powered by ApeWorX).
 
