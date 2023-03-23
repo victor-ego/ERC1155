@@ -1,19 +1,13 @@
 # @version >=0.3.4
 # SPDX-License-Identifier: MIT
 
-from vyper.interfaces import ERC165 as IERC165
-from vyper.interfaces import ERC1155 as IERC1155
-from vyper.interfaces import ERC1155MetadataURI as IERC1155MetadataURI
-from vyper.interfaces import ERC1155Receiver as IERC1155Receiver
+from vyper.interfaces import ERC165
+from vyper.interfaces import ERC115
+from vyper.interfaces import IERC1155MetadataURI
+from vyper.interfaces import IERC1155Receiver
 
-from vyper.utils import Address, ERC165
-
-@external
-implements(ERC165)
-implements(IERC1155)
-implements(IERC1155MetadataURI)
-
-contract ERC1155:
+# Mapping from token ID to account balances
+_balances: public(HashMap[address, HashMap[uint256, uint256]])
 
 # Mapping from token ID to account balances
 _balances: public(HashMap[address, HashMap[uint256, uint256]])
