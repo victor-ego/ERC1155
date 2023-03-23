@@ -67,27 +67,27 @@ event URI:
 
 # Interfaces
 
+implements: ERC165
+
 interface ERC1155Receiver:
     def onERC1155BatchReceived(
-        operator: address, 
-        from: address, 
+        operator: address,
         to: address, 
         ids: uint256, 
         amounts: uint256, 
-        data: Bytes[CALLBACK_NUMBYTES]) -> bytes32: view
+        data: Bytes[CALLBACK_NUMBYTES]) -> bytes32: payable
 
-@internal
-def _doSafeBatchTransferAcceptanceCheck(
-    operator: address,
-    from: address,
-    to: address,
-    ids: uint256[4],
-    amounts: uint256[4],
-    data: Bytes[1024]
-) -> None:
+    def _doSafeBatchTransferAcceptanceCheck(
+        operator: address,
+        to: address,
+        ids: DynArray[uint256, BATCH_SIZE],
+        amounts: DynArray[uint256, BATCH_SIZE],
+        data: Bytes[CALLBACK_NUMBYTES]
+    ) -> bytes32: payable
+
     if to.is_contract():
         try:
-            response: bytes32 = ERC1155Receiver(to).onERC1155BatchReceived(operator, from, to, ids, amounts, data)
+            response: bytes32 = ERC1155Receiver(to).onERC1155BatchReceived(operator, to, ids, amounts, data)
             if response != IERC1155Receiver.onERC1155BatchReceived.selector:
                 revert("ERC1155: ERC1155Receiver rejected tokens")
         except:
@@ -141,10 +141,18 @@ def setApprovalForAll(operator: address, approved: bool) -> None:
 def isApprovedForAll(account: address, operator: address) -> bool:
     return self._operatorApprovals[account][operator]
 
+"""
+@param _from    Source address
+@param _to      Target address
+@param _ids     IDs of each token type (order and length must match _values array)
+@param _values  Transfer amounts per token type (order and length must match _ids array)
+@param _data    Additional data with no specified format, MUST be sent unaltered in call to the `ERC1155TokenReceiver` hook(s) on `_to`
+    */
+"""
 @external
-def safeTransferFrom(from: address, to: address, id: uint256, amount: uint256, data: Bytes[CALLBACK_NUMBYTES]) -> None:
-    assert from == msg.sender or self.isApprovedForAll(from, msg.sender), "ERC1155: caller is not token owner or approved"
-    self._safeTransferFrom(from, to, id, amount, data)
+def safeTransferFrom(_from: address, _to: address, _id: uint256, _amount: uint256, _data: Bytes[CALLBACK_NUMBYTES]) -> None:
+    assert _from == msg.sender or self.isApprovedForAll(_from, msg.sender), "ERC1155: caller is not token owner or approved"
+    self._safeTransferFrom(_from, _to, id, amount, data)
 
 @external
 def safeBatchTransferFrom(from: address, to: address, ids: DynArray[uint256, BATCH_SIZE], amounts: DynArray[uint256, BATCH_SIZE], data: Bytes[CALLBACK_NUMBYTES]) -> None:
