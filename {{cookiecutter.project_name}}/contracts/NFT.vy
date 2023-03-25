@@ -25,6 +25,10 @@ CALLBACK_NUMBYTES: constant(uint256) = 1024
 # URI length set to 300. 
 MAX_URI_LENGTH: constant(uint256) = 256
 
+#Interface IDs
+ERC165_INTERFACE_ID: constant(bytes4)  = 0x01ffc9a7
+ERC1155_INTERFACE_ID: constant(bytes4) = 0xd9b67a26
+
 
 # Events
 event TransferSingle:
@@ -257,7 +261,7 @@ def _burnBatch(_from: address, _ids: DynArray[uint256, BATCH_SIZE], _values: Dyn
 
         fromBalance: uint256 = self._balances[_from][id]
         assert fromBalance >= value, "ERC1155: burn value exceeds balance"
-        self._balances[_from][_id] = fromBalance - value
+        self._balances[_from][id] = fromBalance - value
 
     log TransferBatch(_operator, _from, ZERO_ADDRESS, _ids, _values)
 
