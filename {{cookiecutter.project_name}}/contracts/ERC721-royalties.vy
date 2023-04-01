@@ -93,6 +93,11 @@ event ApprovalForAll:
     operator: indexed(address)
     approved: bool
 
+# @dev This emits when the owner of the contract withdrawals royalties
+# @param amount withdrawal by owner of smart contract
+event RoyaltiesWithdrawn:
+    amount: indexed(uint256)
+
 owner: public(address)
 isMinter: public(HashMap[address, bool])
 
@@ -109,6 +114,10 @@ isApprovedForAll: public(HashMap[address, HashMap[address, bool]])
 
 # @dev Mapping from NFT ID to approved address.
 idToApprovals: public(HashMap[uint256, address])
+
+# @dev storage variable for accumulated royalties by contract creator
+accumulatedRoyalties: uint256
+
 ############ ERC-4494 ############
 
 # @dev Mapping of TokenID to nonce values used for ERC4494 signature verification
@@ -237,7 +246,7 @@ def getApproved(tokenId: uint256) -> address:
 ### Royalty integration under the ERC-2981: NFT Royalty Standard
 
 @internal
-def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> uint256:
+def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
     """
     /// @notice Called with the sale price to determine how much royalty
     //          is owed and to whom. Important; Not all marketplaces respect this, e.g. OpenSea
@@ -248,7 +257,26 @@ def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> uint256:
     """
 
     royalty: uint256 = convert(convert(_salePrice, decimal) * ROYALTY_TO_APPLY_TO_PRICE, uint256) # Percentage that accepts decimals
-    return royalty
+    return self.owner, royalty
+
+@external
+@payable
+def withdrawRoyalties():
+    assert self.owner == msg.sender
+    amount: uint256 = self.accumulatedRoyalties
+    self.accumulatedRoyalties = 0
+    send(self.owner, amount)
+    log RoyaltiesWithdrawn(amount)
+
+@internal
+@payable
+def _deductRoyalties(tokenId: uint256) -> uint256:
+    assert msg.value >= self.mintPrice, "Value must cover mint price"
+    royaltyReceiver: address = empty(address)
+    royaltyAmount: uint256 = 0
+    royaltyReceiver, royaltyAmount = self._royaltyInfo(tokenId, msg.value)
+    self.accumulatedRoyalties += royaltyAmount
+    return msg.value - royaltyAmount
 
 @view
 @internal
@@ -275,7 +303,6 @@ def _isApprovedOrOwner(spender: address, tokenId: uint256) -> bool:
 
 
 @internal
-@payable
 def _transferFrom(owner: address, receiver: address, tokenId: uint256, sender: address):
     """
     @dev Execute transfer of a NFT.
@@ -287,11 +314,6 @@ def _transferFrom(owner: address, receiver: address, tokenId: uint256, sender: a
          Throws if `tokenId` is not a valid NFT.
          
     """
-    # transfers can not be lower than the mintPrice
-    floorPrice: uint256 = self.mintPrice
-    # we check if the floor price is >= than the value users is trying to sell
-    # users can not transfer the token for less than the mintPrice
-    assert floorPrice >= msg.value
     # Check requirements
     assert self._isApprovedOrOwner(sender, tokenId)
     assert receiver != empty(address)
@@ -301,10 +323,6 @@ def _transferFrom(owner: address, receiver: address, tokenId: uint256, sender: a
     # Reset approvals, if any
     if self.idToApprovals[tokenId] != empty(address):
         self.idToApprovals[tokenId] = empty(address)
-
-    # force paying royalties to contract owner
-    send(self.owner, self._royaltyInfo(tokenId, msg.value))
-
 
     # EIP-4494: increment nonce on transfer for safety
     self.nonces[tokenId] += 1
@@ -323,6 +341,7 @@ def _transferFrom(owner: address, receiver: address, tokenId: uint256, sender: a
 
 
 @external
+@payable
 def transferFrom(owner: address, receiver: address, tokenId: uint256):
     """
     @dev Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
@@ -336,10 +355,18 @@ def transferFrom(owner: address, receiver: address, tokenId: uint256):
     @param receiver The new owner.
     @param tokenId The NFT to transfer.
     """
+
+    # users can not transfer the token for less than the mintPrice
+    assert self.mintPrice >= msg.value
     self._transferFrom(owner, receiver, tokenId, msg.sender)
+    # calculate the amount to pay seller deducting royalties
+    amountForSale: uint256 = self._deductRoyalties(tokenId)
+    # how does the marketplace know that to pay the seller?
+    send(receiver, amountForSale)
 
 
 @external
+@payable
 def safeTransferFrom(
         owner: address,
         receiver: address,
@@ -361,7 +388,16 @@ def safeTransferFrom(
     @param tokenId The NFT to transfer.
     @param data Additional data with no specified format, sent in call to `receiver`.
     """
+
+    # users can not transfer the token for less than the mintPrice
+    assert self.mintPrice >= msg.value
     self._transferFrom(owner, receiver, tokenId, msg.sender)
+
+     # calculate the amount to pay seller deducting royalties
+    amountForSale: uint256 = self._deductRoyalties(tokenId)
+    # how does the marketplace know that to pay the seller?
+    send(receiver, amountForSale)
+
     if receiver.is_contract: # check if `receiver` is a contract address
         returnValue: bytes4 = ERC721Receiver(receiver).onERC721Received(msg.sender, owner, tokenId, data)
         # Throws if transfer destination is a contract which does not implement 'onERC721Received'
