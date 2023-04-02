@@ -282,8 +282,6 @@ def _deductRoyalties(tokenId: uint256) -> uint256:
     royaltyAmount: uint256 = 0
     # we calculate royalties and owners address
     self.owner, royaltyAmount = self._royaltyInfo(tokenId, msg.value)
-    # add royaltyAmount to lastBalance of the smartcontract since withdrawn of owner
-    self.lastBalance += royaltyAmount
     # substract the value of transaction the royality to pay creator
     return msg.value - royaltyAmount
 
@@ -367,6 +365,10 @@ def transferFrom(owner: address, receiver: address, tokenId: uint256):
     """
     # calculate the amount to pay seller deducting royalties
     self._deductRoyalties(tokenId)
+    # royalty transfer to the contract
+    send(self.owner, self.royaltyAmount)
+    # add royaltyAmount to lastBalance of the smartcontract since withdrawn of owner
+    self.lastBalance = self.balance
     self._transferFrom(owner, receiver, tokenId, msg.sender)
     
 
@@ -399,9 +401,13 @@ def safeTransferFrom(
     refund: uint256 = msg.value - self.mintPrice
     # calculate the amount to pay seller deducting royalties
     self._deductRoyalties(tokenId)
+    # royalty transfer to the contract
+    send(self.owner, self.royaltyAmount)
     # users can not make transfer unless royalties are paid
     assert self.balance - self.lastBalance >= self.royaltyAmount
     self._transferFrom(owner, receiver, tokenId, msg.sender)
+    # add royaltyAmount to lastBalance of the smartcontract since withdrawn of owner
+    self.lastBalance = self.balance
 
     if receiver.is_contract: # check if `receiver` is a contract address
         returnValue: bytes4 = ERC721Receiver(receiver).onERC721Received(msg.sender, owner, tokenId, data)
