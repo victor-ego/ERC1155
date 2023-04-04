@@ -368,6 +368,7 @@ def transferFrom(owner: address, receiver: address, tokenId: uint256):
     # Will revert if the received value is less than the mint price
     refund: uint256 = msg.value - self.mintPrice
     assert self.balance - self.lastBalance >= self.royaltyAmount
+    self._deductRoyalties(tokenId)
     self._transferFrom(owner, receiver, tokenId, msg.sender)
     
 
