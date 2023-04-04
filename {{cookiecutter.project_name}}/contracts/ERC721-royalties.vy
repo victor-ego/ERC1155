@@ -119,9 +119,9 @@ idToApprovals: public(HashMap[uint256, address])
 # this balance is reset to 0 the moment the creator withdraws royalties
 lastBalance: uint256
 
-# @dev royaltyAmount paid on transaction
-# set to 0 on _deductRoyalties everytime a new transaction is created
+# @dev we check this value to make sure royalties have been paid
 royaltyAmount: uint256
+
 
 ############ ERC-4494 ############
 
@@ -146,7 +146,7 @@ baseURI: public(String[100])
 mintPrice: public(uint256)  # set to 0.01 ETH
 
 # @dev Maximum supply of token
-MAX_SUPPLY: constant(uint256) = 500
+MAX_SUPPLY: constant(uint256) = 1000
 # @dev Percentage of royalties for lifetime for the creator
 ROYALTY_TO_APPLY_TO_PRICE: constant(decimal) = 10.0 / 100.0
 
@@ -157,7 +157,7 @@ def __init__():
     @dev Contract constructor.
     """
     self.owner = msg.sender
-    self.baseURI = "ipfs://QmaZm1rAkt6kHTKTFX8GwEhtPMVMeAGJYMBvoAcJWTddwb"
+    self.baseURI = "ipfs://bafybeihshhxocxbjrvrdqvtlaen6eiduoq2icq7ejubq5tcqwxxaplx5l4"
     self.mintPrice = 10 ** 16 # 0.01 ETH
     # ERC712 domain separator for ERC4494
     self.DOMAIN_SEPARATOR = keccak256(
@@ -251,6 +251,7 @@ def getApproved(tokenId: uint256) -> address:
 ### Royalty integration under the ERC-2981: NFT Royalty Standard
 
 @internal
+@view
 def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
     """
     /// @notice Called with the sale price to determine how much royalty
@@ -258,7 +259,7 @@ def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
     /// @param _tokenId - the NFT asset queried for royalty information
     /// @param _salePrice - the sale price of the NFT asset specified by _tokenId
     /// @return receiver - address of who should be sent the royalty payment
-    /// @return royaltyAmount - the royalty payment amount for _salePrice
+    /// @return owner address and royaltyAmount - the royalty payment amount for _salePrice
     """
 
     royalty: uint256 = convert(convert(_salePrice, decimal) * ROYALTY_TO_APPLY_TO_PRICE, uint256) # Percentage that accepts decimals
@@ -267,7 +268,7 @@ def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
 @external
 @payable
 def withdrawRoyalties():
-    assert self.owner == msg.sender
+    assert msg.sender == self.owner
     amount: uint256 = self.lastBalance
     self.lastBalance = 0
     send(self.owner, amount)
@@ -275,15 +276,15 @@ def withdrawRoyalties():
 
 @internal
 @payable
-def _deductRoyalties(tokenId: uint256) -> uint256:
+def _deductRoyalties(tokenId: uint256):
     # Will revert if the received value is less than the mint price
     refund: uint256 = msg.value - self.mintPrice
-    # we reset to 0 royaltyAmount to calculate royalties for this transactions
-    royaltyAmount: uint256 = 0
     # we calculate royalties and owners address
-    self.owner, royaltyAmount = self._royaltyInfo(tokenId, msg.value)
-    # substract the value of transaction the royality to pay creator
-    return msg.value - royaltyAmount
+    self.owner, self.royaltyAmount = self._royaltyInfo(tokenId, msg.value)
+    # make transaction to the contract
+    send(self, self.royaltyAmount)
+    # set balances to equal to allow transfer
+    self.lastBalance = self.balance
 
 @view
 @internal
@@ -350,6 +351,7 @@ def _transferFrom(owner: address, receiver: address, tokenId: uint256, sender: a
 
 
 @external
+@payable
 def transferFrom(owner: address, receiver: address, tokenId: uint256):
     """
     @dev Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
@@ -363,12 +365,9 @@ def transferFrom(owner: address, receiver: address, tokenId: uint256):
     @param receiver The new owner.
     @param tokenId The NFT to transfer.
     """
-    # calculate the amount to pay seller deducting royalties
-    self._deductRoyalties(tokenId)
-    # royalty transfer to the contract
-    send(self.owner, self.royaltyAmount)
-    # add royaltyAmount to lastBalance of the smartcontract since withdrawn of owner
-    self.lastBalance = self.balance
+    # Will revert if the received value is less than the mint price
+    refund: uint256 = msg.value - self.mintPrice
+    assert self.balance - self.lastBalance >= self.royaltyAmount
     self._transferFrom(owner, receiver, tokenId, msg.sender)
     
 
@@ -399,15 +398,8 @@ def safeTransferFrom(
 
     # Will revert if the received value is less than the mint price
     refund: uint256 = msg.value - self.mintPrice
-    # calculate the amount to pay seller deducting royalties
-    self._deductRoyalties(tokenId)
-    # royalty transfer to the contract
-    send(self.owner, self.royaltyAmount)
-    # users can not make transfer unless royalties are paid
     assert self.balance - self.lastBalance >= self.royaltyAmount
     self._transferFrom(owner, receiver, tokenId, msg.sender)
-    # add royaltyAmount to lastBalance of the smartcontract since withdrawn of owner
-    self.lastBalance = self.balance
 
     if receiver.is_contract: # check if `receiver` is a contract address
         returnValue: bytes4 = ERC721Receiver(receiver).onERC721Received(msg.sender, owner, tokenId, data)
