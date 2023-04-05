@@ -250,6 +250,23 @@ def getApproved(tokenId: uint256) -> address:
 ### TRANSFER FUNCTION HELPERS ###
 ### Royalty integration under the ERC-2981: NFT Royalty Standard
 
+# function for market places to call in order to calculate and pay royalties (IMPORTANT: not all market places do this!)
+@external
+@view
+def royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
+    """
+    /// @notice Called with the sale price to determine how much royalty
+    //          is owed and to whom. Important; Not all marketplaces respect this, e.g. OpenSea
+    /// @param _tokenId - the NFT asset queried for royalty information
+    /// @param _salePrice - the sale price of the NFT asset specified by _tokenId
+    /// @return receiver - address of who should be sent the royalty payment
+    /// @return owner address and royaltyAmount - the royalty payment amount for _salePrice
+    """
+
+    royalty: uint256 = convert(convert(_salePrice, decimal) * ROYALTY_TO_APPLY_TO_PRICE, uint256) # Percentage that accepts decimals
+    return self.owner, royalty
+
+# Helper function in case market place does not support royalties
 @internal
 @view
 def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
@@ -270,20 +287,17 @@ def _royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
 def withdrawRoyalties():
     assert msg.sender == self.owner
     amount: uint256 = self.lastBalance
-    self.lastBalance = 0
     send(self.owner, amount)
+    self.lastBalance = 0
     log RoyaltiesWithdrawn(amount)
 
 @internal
 @payable
 def _deductRoyalties(tokenId: uint256):
-    # Will revert if the received value is less than the mint price
-    refund: uint256 = msg.value - self.mintPrice
     # we calculate royalties and owners address
     self.owner, self.royaltyAmount = self._royaltyInfo(tokenId, msg.value)
     # make transaction to the contract
     send(self, self.royaltyAmount)
-    # set balances to equal to allow transfer
     self.lastBalance = self.balance
 
 @view
@@ -367,8 +381,13 @@ def transferFrom(owner: address, receiver: address, tokenId: uint256):
     """
     # Will revert if the received value is less than the mint price
     refund: uint256 = msg.value - self.mintPrice
-    assert self.balance - self.lastBalance >= self.royaltyAmount
-    self._deductRoyalties(tokenId)
+    #TODO -> check if marketplace did pay for the royalty by looking at the balance of the smart contract comparing to lastBalance
+    # if did not increase excute _deductRoyalties
+    # check if balance equal or smaller since last check on lastBalance we deductRoyalties ourself...
+    if self.balance < self.lastBalance:
+        self._deductRoyalties(tokenId)
+        # equal the contract balance to the lastBalance for future checks
+        self.lastBalance = self.balance
     self._transferFrom(owner, receiver, tokenId, msg.sender)
     
 
@@ -399,7 +418,10 @@ def safeTransferFrom(
 
     # Will revert if the received value is less than the mint price
     refund: uint256 = msg.value - self.mintPrice
-    assert self.balance - self.lastBalance >= self.royaltyAmount
+    if self.balance < self.lastBalance:
+        self._deductRoyalties(tokenId)
+        # equal the contract balance to the lastBalance for future checks
+        self.lastBalance = self.balance
     self._transferFrom(owner, receiver, tokenId, msg.sender)
 
     if receiver.is_contract: # check if `receiver` is a contract address
@@ -409,6 +431,7 @@ def safeTransferFrom(
 
 
 @external
+@payable
 def changeMintPrice(newMintPrice: uint256):
     """
     @dev Allow contract owner to change the mintPrice
